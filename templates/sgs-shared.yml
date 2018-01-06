@@ -1,0 +1,27 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Shared security groups
+
+Resources:
+  DefaultIngressSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH access across the VPC
+      VpcId: !ImportValue infra-vpc::VpcId
+      SecurityGroupIngress:
+        - IpProtocol: icmp
+          FromPort: 8
+          ToPort: 8
+          CidrIp: !ImportValue infra-vpc::VpcCidr
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !ImportValue infra-vpc::VpcCidr
+
+Outputs:
+  DefaultIngressSgId:
+    Description: Default ingress security group id
+    Value: !Ref DefaultIngressSg
+    Export:
+      Name: !Sub ${AWS::StackName}::DefaultIngressSgId
