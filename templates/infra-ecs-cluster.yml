@@ -101,10 +101,18 @@ Resources:
               Enabled: true
             SecurityGroups:
               - GroupId: !Ref EcsHostSg
+              - GroupId: !ImportValue infra-sgs::DefaultIngressSgId
+
+            # EC2 instances need to have public IPs to register ECS:
+            # https://stackoverflow.com/questions/31036600/why-cant-my-ecs-service-register-available-ec2-instances-with-my-elb
+            # I either use public subnets, which is not best security practice, but it saves
+            # me money from running NAT gateways.
+            # Or I can use service subnets, which is better practice, but I need to run NAT
             SubnetId: !Join
               - ','
               - - !ImportValue infra-vpc::PublicSubnet1Id
                 - !ImportValue infra-vpc::PublicSubnet2Id
+
             UserData:
               "Fn::Base64": !Sub |
                 #!/bin/bash
