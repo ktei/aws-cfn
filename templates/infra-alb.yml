@@ -1,0 +1,71 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Application load balancer
+
+Parameters:
+  CertificateArn:
+    Type: String
+    Description: The ARN of the SSL/TLS certificate for ALB port 443 listener
+    Default: arn:aws:acm:ap-southeast-2:504224764639:certificate/ce5a2456-f97b-49ed-91fd-323b0e290fb8
+
+Resources:
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !ImportValue infra-vpc::PublicSubnet1Id
+        - !ImportValue infra-vpc::PublicSubnet2Id
+      SecurityGroups:
+        - !Ref LoadBalancerSg
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}::LoadBalancer
+
+  LoadBalancerSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public access to ALB
+      VpcId: !ImportValue infra-vpc::VpcId
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}::LoadBalancerSg
+  
+  # We're not going to use the default group but we need this to create ALB
+  DefaultTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue infra-vpc::VpcId
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}::DefaultTargetGroup
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - TargetGroupArn: !Ref DefaultTargetGroup
+          Type: forward
+
+Outputs:
+  LoadBalancerListenerArn:
+    Value: !Ref LoadBalancerListener
+    Export:
+      Name: !Sub ${AWS::StackName}::LoadBalancerListenerArn
+
+  LoadBalancerSgId:
+    Value: !Ref LoadBalancerSg
+    Export:
+      Name: !Sub ${AWS::StackName}::LoadBalancerSgId

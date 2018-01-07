@@ -1,0 +1,162 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: ECS cluster of spot fleet
+
+Parameters:
+  ClusterName:
+    Type: String
+    Description: Name of the ECS cluster
+    Default: ApplicationCluster
+
+  TargetCapacity:
+    Type: Number
+    Description: How many EC2 instances do we want
+    Default: 1 # HA needs at least 2
+
+  InstanceType:
+    Type: String
+    AllowedValues:
+      - t2.micro
+    Description: EC2 instance type to use for ECS cluster
+    Default: t2.micro
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the EC2 instances
+    Default: default-keypair
+
+  SpotBidPrice:
+    Type: String
+    Description: Maximum price that you are willing to pay per hour per instance
+    Default: 0.0035
+
+Mappings:
+  AWSRegionToECSAMI:
+    ap-northeast-1:
+      AMI: ami-af46dbc9
+    ap-southeast-1:
+      AMI: ami-fec3b482
+    ap-southeast-2:
+      AMI: ami-b88e7cda
+    ca-central-1:
+      AMI: ami-e8cb4e8c
+    eu-central-1:
+      AMI: ami-b378e8dc
+    eu-west-1:
+      AMI: ami-7827b301
+    eu-west-2:
+      AMI: ami-acd5cdc8
+    us-east-1:
+      AMI: ami-13401669
+    us-east-2:
+      AMI: ami-901338f5
+    us-west-1:
+      AMI: ami-b3adacd3
+    us-west-2:
+      AMI: ami-9a02a9e2
+
+Resources:
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+
+  EcsHostSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !ImportValue infra-vpc::VpcId
+      GroupDescription: Access to the ECS hosts and the tasks/containers that run on them
+      SecurityGroupIngress:
+        # allow free access for ALB
+        - IpProtocol: "-1"
+          SourceSecurityGroupId: !ImportValue infra-alb::LoadBalancerSgId
+        # SSH for jumpbox
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !ImportValue infra-vpc::VpcCidr
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}::EcsHostSg
+
+  SpotFleet:
+    Type: AWS::EC2::SpotFleet
+    DependsOn:
+      - SpotFleetRole
+      - SpotFleetInstanceProfile
+      - EcsHostSg
+      - EcsCluster
+    Properties:
+      SpotFleetRequestConfigData:
+        AllocationStrategy: lowestPrice
+        IamFleetRole: !GetAtt SpotFleetRole.Arn
+        LaunchSpecifications:
+          - IamInstanceProfile:
+              Arn: !GetAtt SpotFleetInstanceProfile.Arn
+            ImageId: !FindInMap [AWSRegionToECSAMI, !Ref "AWS::Region", AMI]
+            InstanceType: !Ref InstanceType
+            KeyName: !Ref KeyName
+            Monitoring:
+              Enabled: true
+            SecurityGroups:
+              - GroupId: !Ref EcsHostSg
+            SubnetId: !Join
+              - ','
+              - - !ImportValue infra-vpc::PublicSubnet1Id
+                - !ImportValue infra-vpc::PublicSubnet2Id
+            UserData:
+              "Fn::Base64": !Sub |
+                #!/bin/bash
+                yum install -y aws-cfn-bootstrap
+                echo ECS_CLUSTER=${EcsCluster} >> /etc/ecs/ecs.config
+        SpotPrice: !Ref SpotBidPrice
+        TargetCapacity: !Ref TargetCapacity
+        TerminateInstancesWithExpiration: true
+
+  SpotFleetInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn:
+      - SpotFleetInstanceRole
+    Properties:
+      Path: /
+      Roles:
+        - Ref: SpotFleetInstanceRole
+
+  SpotFleetInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+      Path: /
+
+  SpotFleetRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - spotfleet.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetRole
+      Path: /
+
+Outputs:
+  EcsClusterName:
+    Value: !Ref ClusterName
+    Export:
+      Name: !Sub ${AWS::StackName}::EcsClusterName

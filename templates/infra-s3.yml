@@ -1,0 +1,22 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Shared S3 buckets
+
+Resources:
+  Vault:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: vault.disasterdev.net
+      Tags:
+        - Key: Name
+          Value: Vault bucket
+
+  Artifacts:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: artifacts.disasterdev.net
+      Tags:
+        - Key: Name
+          Value: Artifcacts bucket

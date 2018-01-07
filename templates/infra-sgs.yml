@@ -1,5 +1,5 @@
 ---
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: 2010-09-09
 
 Description: Shared security groups
 
@@ -18,6 +18,9 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: !ImportValue infra-vpc::VpcCidr
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}::DefaultIngressSg
 
 Outputs:
   DefaultIngressSgId:
@@ -25,3 +28,4 @@ Outputs:
     Value: !Ref DefaultIngressSg
     Export:
       Name: !Sub ${AWS::StackName}::DefaultIngressSgId
+
